@@ -1,85 +1,201 @@
 # Resonance
 
-Local-first desktop music player and audio analyzer built with Tauri 2, React 19, TypeScript, Reatom v1001 and Rust. Audio files stay in their original folders; the app stores canonical paths, metadata, playlists, playback state and analysis caches locally.
+> [!IMPORTANT]
+> Проект полностью спроектирован и собран с помощью искусственного интеллекта — OpenAI Codex. Код, архитектура, интерфейс и документация создавались ИИ по пользовательским требованиям и проходили автоматические проверки.
 
-## Stack
+Resonance — локальный настольный музыкальный плеер на Tauri 2. Музыка не загружается в облако и не копируется внутрь приложения: файлы остаются в исходных папках, а Resonance локально хранит пути, метаданные, плейлисты, пользовательские метки, очередь и состояние воспроизведения.
 
-- Bun + Vite + React + strict TypeScript
-- Feature-Sliced Design, checked by Steiger
-- Reatom v1001 as the only state manager
-- shadcn-style components over Radix UI primitives
-- Tauri commands/events and typed frontend IPC
-- Rust, SQLx + SQLite, Symphonia, Rubato and CPAL
-- Canvas 2D waveform, peak map and draggable real-time frequency spectrum
+## Что уже работает
 
-## Prerequisites
+### Медиатека
 
-Follow the [official Tauri prerequisites](https://tauri.app/start/prerequisites/). On Windows install Microsoft C++ Build Tools with **Desktop development with C++**, WebView2 and the stable MSVC Rust toolchain. Android additionally requires Android Studio, JDK, SDK/NDK and the documented environment variables.
+- импорт отдельных файлов или целой папки;
+- форматы MP3, FLAC и WAV;
+- локальное хранение метаданных в SQLite;
+- поиск по названию, исполнителю, альбому и пользовательским меткам;
+- избранные и недавно прослушанные треки;
+- обнаружение перемещённых или удалённых файлов;
+- открытие расположения файла в проводнике;
+- удаление трека только из медиатеки без физического удаления файла.
+
+### Плейлисты
+
+- создание, переименование, закрепление и удаление плейлистов;
+- красивые диалоги вместо системных `prompt`;
+- добавление трека сразу в несколько плейлистов;
+- защита от повторного добавления одного трека в один плейлист;
+- удаление треков из плейлиста без удаления из медиатеки;
+- серверные команды для изменения порядка треков.
+
+### Пользовательские метки
+
+К каждому треку можно прикрепить короткие цветные пометки, например «ночной вайб», «для дороги» или «доделать».
+
+- до 24 Unicode-символов;
+- семь цветов;
+- защита от одинаковых меток у одного трека без учёта регистра;
+- быстрое добавление и удаление прямо в таблице;
+- сохранение в SQLite между запусками приложения;
+- участие меток в поиске по медиатеке.
+
+### Воспроизведение
+
+- нативный аудиодвижок на Rust без браузерного `<audio>`;
+- воспроизведение, пауза, переход к следующему и предыдущему треку;
+- точная перемотка, громкость, повтор и случайный порядок;
+- постоянная очередь воспроизведения;
+- предварительное заполнение аудиобуфера;
+- защита от проигрывания тишины при опустошении буфера;
+- плавное изменение громкости.
+
+### Визуализация
+
+- раскрываемый SoundCloud-подобный waveform-таймлайн с перемоткой;
+- 48-полосный логарифмический спектр текущего аудиосигнала;
+- свободно перемещаемое окно спектра в пределах приложения;
+- Canvas 2D с учётом плотности пикселей экрана.
+
+Отдельной страницы «Анализ» нет: визуализации находятся рядом с управлением плеером и открываются только тогда, когда нужны.
+
+## Технологии
+
+### Frontend
+
+- Bun, Vite, React 19 и strict TypeScript;
+- TanStack Router;
+- Reatom v1001 как единственный менеджер состояния;
+- Feature-Sliced Design, проверяемый Steiger;
+- Radix UI и локальные shadcn-подобные компоненты;
+- Canvas 2D для waveform и спектра;
+- типизированный IPC поверх Tauri commands и events.
+
+### Backend
+
+- Rust и Tauri 2;
+- SQLx и SQLite;
+- Symphonia для декодирования MP3, FLAC и WAV;
+- Rubato для stateful-ресемплинга;
+- CPAL для вывода звука на системное аудиоустройство;
+- RustFFT для спектрального анализа;
+- bounded lock-free очереди для передачи PCM;
+- BLAKE3 для идентификации содержимого файлов.
+
+## Требования
+
+Сначала установите [официальные prerequisites Tauri](https://tauri.app/start/prerequisites/).
+
+Для Windows нужны:
+
+- Microsoft C++ Build Tools с workload **Desktop development with C++**;
+- WebView2 Runtime;
+- Rust с toolchain `stable-msvc`;
+- Bun.
 
 ```powershell
 winget install --id Rustlang.Rustup
 rustup default stable-msvc
+rustc --version
+cargo --version
+bun --version
 ```
 
-Restart the terminal after installing Rust, then verify `rustc --version` and `cargo --version`.
+После установки Rust перезапустите терминал.
 
-## Development
+## Запуск для разработки
+
+Все команды выполняются из корня репозитория:
 
 ```powershell
+cd C:\Users\Akustik\WebstormProjects\the-best-player-music-of-the-worl
 bun install
 bun run tauri dev
 ```
 
-Android initialization and development:
+Первая Rust-компиляция может занять заметное время. Если проект был физически перенесён в другую папку и Cargo сообщает пути из старого расположения, очистите только генерируемый кэш:
+
+```powershell
+cargo clean --manifest-path src-tauri/Cargo.toml
+```
+
+### Android
 
 ```powershell
 bun run tauri android init
 bun run tauri android dev
 ```
 
-Quality gates (the build is intentionally separate):
+Android-сборка требует Android Studio, JDK, Android SDK/NDK и переменных окружения из документации Tauri. Работа нативного аудиодвижка на Android пока не подтверждена.
+
+## Проверки
+
+Frontend:
 
 ```powershell
 bun run typecheck
 bun run lint
 bun run lint:fsd
 bun run test
+```
+
+Rust:
+
+```powershell
 bun run check:rust
 ```
 
-## Architecture
+Все проверки сразу:
 
-Frontend follows `app → pages → widgets → features → entities → shared`. Slices expose public APIs through `index.ts`; UI never calls Tauri `invoke` directly. Reatom v1001 uses small domain atoms and actions. Frequent playback snapshots are isolated in the player feature instead of refreshing the entire application at animation-frame frequency.
+```powershell
+bun run check
+```
+
+Команда `bun run build` намеренно не входит в обычный цикл проверок.
+
+## Архитектура
+
+Frontend следует слоям Feature-Sliced Design:
+
+```text
+src/
+├── app/
+├── pages/
+├── widgets/
+├── features/
+├── entities/
+└── shared/
+```
+
+Слои зависят только от нижележащих слоёв и используют публичные API через `index.ts`. React-компоненты не вызывают `invoke` напрямую: UI обращается к Reatom actions, те используют типизированный API сущности, а IPC-команда передаёт работу Rust.
 
 ```mermaid
 flowchart LR
-    UI[React UI] --> MODEL[Reatom models]
-    MODEL --> IPC[Tauri typed API]
-    IPC --> CMD[Rust commands]
-    CMD --> DB[(SQLite)]
-    CMD --> LIB[Library service]
-    CMD --> AUDIO[Audio engine]
-    CMD --> ANALYSIS[Analysis workers]
-    AUDIO --> EVENTS[Playback snapshots]
-    ANALYSIS --> EVENTS2[Analysis progress]
-    EVENTS --> MODEL
-    EVENTS2 --> MODEL
+    UI["React UI"] --> STATE["Reatom atoms и actions"]
+    STATE --> IPC["Типизированный Tauri IPC"]
+    IPC --> COMMANDS["Rust commands"]
+    COMMANDS --> DATABASE[("SQLite")]
+    COMMANDS --> LIBRARY["Library service"]
+    COMMANDS --> ENGINE["AudioEngine"]
+    ENGINE --> EVENTS["Playback snapshots"]
+    EVENTS --> STATE
 ```
 
-Rust owns persistence, file validation, decoding, playback and analysis. `AppState` contains the SQLx pool, persistent queue and `AudioEngine`. The engine keeps filesystem and decoding work away from the CPAL callback and sends PCM through a lock-free queue.
+Нативный аудиотракт:
 
 ```mermaid
 flowchart LR
-    FILE[Local audio file] --> DECODER[Symphonia decoder worker]
-    DECODER --> RESAMPLER[Rubato stateful resampler]
-    RESAMPLER --> BUFFER[Lock-free PCM queue]
-    BUFFER --> DSP[DSP/volume stage]
-    DSP --> OUTPUT[CPAL output]
+    FILE["Локальный аудиофайл"] --> DECODER["Symphonia decoder worker"]
+    DECODER --> RESAMPLER["Rubato resampler"]
+    RESAMPLER --> BUFFER["Lock-free PCM buffer"]
+    BUFFER --> DSP["Громкость и DSP"]
+    DSP --> OUTPUT["CPAL output"]
+    DSP --> FFT["48-band FFT"]
 ```
 
-## Local data
+Rust отвечает за файловую систему, проверку входных данных, SQLite, декодирование, очередь и воспроизведение. Частые snapshots плеера изолированы от остального состояния интерфейса, чтобы не перерисовывать всё приложение с частотой аудиообновлений.
 
-Tauri's application data directory contains:
+## Локальные данные
+
+Данные приложения хранятся в системной директории Tauri:
 
 ```text
 <AppData>/com.akustik.music-player/
@@ -91,17 +207,20 @@ Tauri's application data directory contains:
     └── analysis/
 ```
 
-SQLx migrations create library roots, tracks, playlists, playlist items, history, settings, analysis and equalizer tables. Imported music is never copied into AppData. Re-import uses canonical path plus size/mtime and a bounded BLAKE3 fingerprint. Background missing-file checks update `is_missing` without blocking initial rendering.
+SQLx-миграции создают таблицы медиатеки, корневых папок, плейлистов, элементов плейлистов, истории, очереди, настроек, анализа, эквалайзера и пользовательских меток. Музыкальные файлы в эту директорию не копируются.
 
-## Audio and analysis
+Повторный импорт сверяет канонический путь, размер, время изменения и ограниченный BLAKE3 fingerprint. Фоновая проверка отсутствующих файлов обновляет `isMissing`, не блокируя начальную загрузку интерфейса.
 
-Supported import and decode formats are MP3, FLAC and WAV. Playback uses a Symphonia decoder worker, a stateful Rubato FFT resampler, bounded lock-free PCM buffer and CPAL output stream. Playback is prebuffered before CPAL starts consuming PCM, and an underrun returns the engine to buffering instead of advancing through injected silence. Volume is smoothed in the real-time callback; seek restarts decoding from an accurate timestamp.
+## Аудиодвижок и анализ
 
-Offline analysis calculates 100 ms min/max waveform buckets, peak dBFS, RMS, crest factor and clipping counts, then saves a versioned JSON cache. The player can expand this cache into a seekable SoundCloud-style timeline. A separate draggable window renders a 48-band logarithmic FFT spectrum from the PCM currently reaching the audio output. Canvas views render at device pixel ratio. The current loudness value is an RMS-derived estimate rather than a certified EBU R128 measurement.
+Декодирование выполняется отдельным worker-потоком. После декодирования аудио проходит stateful-ресемплинг и попадает в ограниченный PCM-буфер, откуда CPAL callback забирает данные для системного устройства. Callback не обращается к диску и не выполняет тяжёлые операции.
 
-## Current limitations
+Offline-анализ формирует 100-миллисекундные min/max-точки waveform, peak dBFS, RMS, crest factor и число clipping samples. Результат хранится в версионированном JSON-кэше. Текущий показатель громкости является оценкой на основе RMS, а не сертифицированным измерением EBU R128.
 
-- Embedded tag/cover extraction is not implemented yet; filename is used as the initial title.
-- Queue reorder and playlist reorder are supported by transactional backend commands, but drag-and-drop UI is not wired yet.
-- EQ database schema is present, but no fake controls are shown: the real biquad DSP chain and preset commands remain to be implemented.
-- Android audio/device behavior has not been validated.
+## Текущие ограничения
+
+- Извлечение встроенных ID3/Vorbis-метаданных и обложек ещё не реализовано; начальное название берётся из имени файла.
+- Backend поддерживает изменение порядка очереди и плейлиста, но drag-and-drop интерфейс ещё не подключён.
+- Схема эквалайзера существует, но реальная biquad DSP-цепочка и пользовательские пресеты ещё не реализованы.
+- Нативный аудиодвижок и поведение аудиоустройств на Android не протестированы.
+- Автоматические тесты покрывают базовые frontend-сценарии, но полноценного end-to-end набора пока нет.
