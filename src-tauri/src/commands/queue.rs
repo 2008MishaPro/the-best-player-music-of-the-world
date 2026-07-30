@@ -5,7 +5,7 @@ use crate::{
 };
 use tauri::State;
 
-async fn persist(state: &AppState, queue: &PlaybackQueueDto) -> AppResult<()> {
+pub(crate) async fn persist(state: &AppState, queue: &PlaybackQueueDto) -> AppResult<()> {
     let value = serde_json::to_string(queue)
         .map_err(|error| AppError::new("UNKNOWN", error.to_string()))?;
     sqlx::query("INSERT INTO settings(key,value_json,updated_at) VALUES('playback_queue',?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at")
@@ -85,11 +85,14 @@ pub async fn queue_remove(index: usize, state: State<'_, AppState>) -> AppResult
     if index >= queue.item_ids.len() {
         return Err(AppError::validation("Индекс за пределами очереди"));
     }
+    let removed_current = index as i32 == queue.current_index;
     queue.item_ids.remove(index);
     if queue.item_ids.is_empty() {
         queue.current_index = -1;
-    } else if index as i32 <= queue.current_index {
-        queue.current_index = (queue.current_index - 1).max(0);
+    } else if removed_current {
+        queue.current_index = index.min(queue.item_ids.len() - 1) as i32;
+    } else if (index as i32) < queue.current_index {
+        queue.current_index -= 1;
     }
     write(&state, queue).await
 }
@@ -103,9 +106,20 @@ pub async fn queue_reorder(
     if from >= queue.item_ids.len() || to >= queue.item_ids.len() {
         return Err(AppError::validation("Индекс за пределами очереди"));
     }
+    let current_index = queue.current_index;
     let item = queue.item_ids.remove(from);
     queue.item_ids.insert(to, item);
-    queue.current_index = to as i32;
+    queue.current_index = if current_index < 0 {
+        -1
+    } else if from as i32 == current_index {
+        to as i32
+    } else if (from as i32) < current_index && (to as i32) >= current_index {
+        current_index - 1
+    } else if (from as i32) > current_index && (to as i32) <= current_index {
+        current_index + 1
+    } else {
+        current_index
+    };
     write(&state, queue).await
 }
 #[tauri::command]

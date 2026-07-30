@@ -1,10 +1,17 @@
 import { useEffect, useRef } from "react";
+import { reatomComponent } from "@reatom/react";
+import { displayedThemeAtom } from "@/entities/theme";
 import type { WaveformPoint } from "@/entities/track-analysis";
 
 type WaveformViewerProps = { points: WaveformPoint[]; progress?: number; onSeek?: (ratio: number) => void };
 
-export function WaveformViewer({ points, progress = 0, onSeek }: WaveformViewerProps) {
+export const WaveformViewer = reatomComponent(({
+  points,
+  progress = 0,
+  onSeek,
+}: WaveformViewerProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const colors = displayedThemeAtom().colors;
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -22,13 +29,13 @@ export function WaveformViewer({ points, progress = 0, onSeek }: WaveformViewerP
       const x = index * barWidth;
       const minY = middle + point.min * middle * 0.85;
       const maxY = middle + point.max * middle * 0.85;
-      ctx.fillStyle = index / points.length <= progress ? "#f3b33d" : "#495064";
+      ctx.fillStyle = index / points.length <= progress ? colors.accent : colors.waveformIdle;
       ctx.fillRect(x, minY, Math.max(1, barWidth - 1), Math.max(1, maxY - minY));
     });
-  }, [points, progress]);
+  }, [colors, points, progress]);
   return <canvas className="waveform-canvas" ref={canvasRef} onPointerDown={(event) => {
     if (!onSeek) return;
     const rect = event.currentTarget.getBoundingClientRect();
     onSeek(Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)));
   }} />;
-}
+}, "WaveformViewer");

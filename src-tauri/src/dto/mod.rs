@@ -39,6 +39,46 @@ pub struct TrackTagDto {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EqualizerStateDto {
+    pub enabled: bool,
+    pub bands: Vec<f32>,
+    pub preamp_db: f32,
+    pub active_preset_id: Option<String>,
+}
+
+impl Default for EqualizerStateDto {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            bands: vec![0.0; 10],
+            preamp_db: 0.0,
+            active_preset_id: Some("builtin-flat".into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EqualizerPresetDto {
+    pub id: String,
+    pub name: String,
+    pub is_builtin: bool,
+    pub bands: Vec<f32>,
+    pub preamp_db: f32,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EqualizerBundleDto {
+    pub frequencies: Vec<f32>,
+    pub state: EqualizerStateDto,
+    pub presets: Vec<EqualizerPresetDto>,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportSummary {

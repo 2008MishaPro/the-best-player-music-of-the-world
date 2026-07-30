@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="resonance-background" x1="160" y1="96" x2="864" y2="928" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffc755" />
+      <stop offset="1" stop-color="#e49a22" />
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="240" fill="url(#resonance-background)" />
+  <path
+    d="M218.667 541.333c58.666 0 58.666-58.666 58.666-58.666V365.333c0-58.666 117.334-58.666 117.334 0V746.667c0 58.666 117.333 58.666 117.333 0V277.333c0-58.666 117.333-58.666 117.333 0V629.333c0 58.667 117.334 58.667 117.334 0V512c0-58.667 58.666-58.667 58.666-58.667"
+    fill="none"
+    stroke="#17130b"
+    stroke-width="64"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

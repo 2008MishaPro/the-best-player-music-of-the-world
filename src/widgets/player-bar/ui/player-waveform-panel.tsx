@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { reatomComponent } from "@reatom/react";
 import { AudioWaveform, LoaderCircle, X } from "lucide-react";
+import { displayedThemeAtom, type ThemeColors } from "@/entities/theme";
 import type { WaveformPoint } from "@/entities/track-analysis";
 import {
   analysisByTrackIdAtom,
@@ -23,10 +24,11 @@ type PlayerWaveformPanelProps = {
 type TimelineCanvasProps = {
   points: WaveformPoint[];
   progress: number;
+  colors: ThemeColors;
   onSeek: (ratio: number) => void;
 };
 
-function TimelineCanvas({ points, progress, onSeek }: TimelineCanvasProps) {
+function TimelineCanvas({ points, progress, colors, onSeek }: TimelineCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [draftRatio, setDraftRatio] = useState<number | null>(null);
   const shownProgress = draftRatio ?? progress;
@@ -47,7 +49,7 @@ function TimelineCanvas({ points, progress, onSeek }: TimelineCanvasProps) {
 
       const middle = rect.height / 2;
       const barWidth = rect.width / Math.max(points.length, 1);
-      context.fillStyle = "rgba(255,255,255,.025)";
+      context.fillStyle = colors.canvasGrid;
       for (let line = 1; line < 4; line += 1) {
         context.fillRect(0, (rect.height * line) / 4, rect.width, 1);
       }
@@ -56,12 +58,14 @@ function TimelineCanvas({ points, progress, onSeek }: TimelineCanvasProps) {
         const x = index * barWidth;
         const amplitudeTop = Math.max(1, Math.abs(point.max) * (middle - 8));
         const amplitudeBottom = Math.max(1, Math.abs(point.min) * (middle - 8));
-        context.fillStyle = index / points.length <= shownProgress ? "#f3b33d" : "#454d5c";
+        context.fillStyle = index / points.length <= shownProgress
+          ? colors.accent
+          : colors.waveformIdle;
         context.fillRect(x, middle - amplitudeTop, Math.max(1, barWidth - 1), amplitudeTop + amplitudeBottom);
       });
 
       const playheadX = Math.max(0, Math.min(rect.width, shownProgress * rect.width));
-      context.fillStyle = "#ffe0a0";
+      context.fillStyle = colors.visualizerHigh;
       context.fillRect(playheadX, 0, 1.5, rect.height);
       context.beginPath();
       context.arc(playheadX, 5, 3.5, 0, Math.PI * 2);
@@ -72,7 +76,7 @@ function TimelineCanvas({ points, progress, onSeek }: TimelineCanvasProps) {
     const observer = new ResizeObserver(draw);
     observer.observe(canvas);
     return () => observer.disconnect();
-  }, [points, shownProgress]);
+  }, [colors, points, shownProgress]);
 
   const ratioAt = (element: HTMLCanvasElement, clientX: number) => {
     const rect = element.getBoundingClientRect();
@@ -115,6 +119,7 @@ export const PlayerWaveformPanel = reatomComponent<PlayerWaveformPanelProps>(({
   const waveform = waveformAtom();
   const statuses = analysisByTrackIdAtom();
   const error = analysisErrorAtom();
+  const colors = displayedThemeAtom().colors;
   const status = trackId ? statuses[trackId] : null;
 
   useEffect(() => {
@@ -133,7 +138,12 @@ export const PlayerWaveformPanel = reatomComponent<PlayerWaveformPanelProps>(({
       {!trackId ? (
         <div className="player-analysis-empty">Сначала включите трек</div>
       ) : waveform.length ? (
-        <TimelineCanvas points={waveform} progress={progress} onSeek={(ratio) => onSeek(ratio * durationMs)} />
+        <TimelineCanvas
+          points={waveform}
+          progress={progress}
+          colors={colors}
+          onSeek={(ratio) => onSeek(ratio * durationMs)}
+        />
       ) : (
         <div className="player-analysis-loading">
           <LoaderCircle className="spin" />

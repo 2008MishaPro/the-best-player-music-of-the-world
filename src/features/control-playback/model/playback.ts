@@ -1,6 +1,7 @@
 import { action, atom, computed } from "@reatom/core";
 import { EMPTY_PLAYBACK, playbackApi, type PlaybackSnapshot, type RepeatMode } from "@/entities/playback";
-import { tracksAtom } from "@/entities/track";
+import { applyQueue, queueApi, queueAtom } from "@/entities/playback-queue";
+import { libraryApi, tracksAtom } from "@/entities/track";
 import { subscribe } from "@/shared/api";
 
 export const playbackSnapshotAtom = atom<PlaybackSnapshot>(EMPTY_PLAYBACK, "playbackSnapshotAtom");
@@ -13,8 +14,17 @@ export const currentTrackAtom = computed(
 );
 
 const applySnapshot = (snapshot: PlaybackSnapshot) => {
+  const trackChanged = playbackSnapshotAtom().trackId !== snapshot.trackId;
   playbackSnapshotAtom.set(snapshot);
   playbackErrorAtom.set(snapshot.error);
+  if (trackChanged && snapshot.trackId) {
+    void Promise.all([
+      queueApi.get().then(applyQueue),
+      libraryApi.getTracks().then((tracks) => tracksAtom.set(tracks)),
+    ]).catch((error) => {
+      playbackErrorAtom.set(error instanceof Error ? error.message : String(error));
+    });
+  }
   return snapshot;
 };
 
@@ -31,8 +41,17 @@ export const loadTrackAction = action(async (trackId: string) => execute(() => p
 export const playAction = action(async () => execute(playbackApi.play), "playAction");
 export const pauseAction = action(async () => execute(playbackApi.pause), "pauseAction");
 export const stopAction = action(async () => execute(playbackApi.stop), "stopAction");
-export const togglePlaybackAction = action(async () =>
-  execute(playbackSnapshotAtom().status === "playing" ? playbackApi.pause : playbackApi.play), "togglePlaybackAction");
+export const togglePlaybackAction = action(async () => {
+  const snapshot = playbackSnapshotAtom();
+  if (!snapshot.trackId) {
+    const queue = queueAtom();
+    const index = queue.currentIndex >= 0 ? queue.currentIndex : 0;
+    const trackId = queue.itemIds[index];
+    if (!trackId) return snapshot;
+    applySnapshot(await playbackApi.load(trackId));
+  }
+  return execute(playbackSnapshotAtom().status === "playing" ? playbackApi.pause : playbackApi.play);
+}, "togglePlaybackAction");
 export const seekAction = action(async (positionMs: number) => {
   const requestId = ++latestSeekRequest;
   try {
@@ -50,7 +69,11 @@ export const setVolumeAction = action(async (volume: number) => execute(() => pl
 export const nextAction = action(async () => execute(playbackApi.next), "nextAction");
 export const previousAction = action(async () => execute(playbackApi.previous), "previousAction");
 export const setRepeatAction = action(async (repeat: RepeatMode) => execute(() => playbackApi.setRepeat(repeat)), "setRepeatAction");
-export const setShuffleAction = action(async (shuffle: boolean) => execute(() => playbackApi.setShuffle(shuffle)), "setShuffleAction");
+export const setShuffleAction = action(async (shuffle: boolean) => {
+  const snapshot = await execute(() => playbackApi.setShuffle(shuffle));
+  applyQueue(await queueApi.get());
+  return snapshot;
+}, "setShuffleAction");
 
 export const initializePlaybackAction = action(async () => {
   applySnapshot(await playbackApi.getSnapshot());

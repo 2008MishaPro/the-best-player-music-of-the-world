@@ -1,4 +1,7 @@
-use crate::error::{AppError, AppResult};
+use crate::{
+    equalizer::{EQ_FREQUENCIES, EQ_MAX_DB, EQ_MIN_DB, PREAMP_MAX_DB, PREAMP_MIN_DB},
+    error::{AppError, AppResult},
+};
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     FromSample, Sample, SizedSample, Stream,
@@ -70,6 +73,7 @@ struct Shared {
     position_samples: AtomicU64,
     generation: AtomicU64,
     decode_done: AtomicBool,
+    natural_end_generation: AtomicU64,
     play_requested: AtomicBool,
     output_rate: u32,
     output_channels: u16,
@@ -78,6 +82,10 @@ struct Shared {
     spectrum: RwLock<Vec<f32>>,
     repeat: AtomicU8,
     shuffle: AtomicBool,
+    equalizer_enabled: AtomicBool,
+    equalizer_bands: [AtomicU32; 10],
+    equalizer_preamp: AtomicU32,
+    equalizer_revision: AtomicU64,
 }
 
 pub struct AudioEngine {
@@ -104,6 +112,7 @@ impl AudioEngine {
             position_samples: AtomicU64::new(0),
             generation: AtomicU64::new(0),
             decode_done: AtomicBool::new(true),
+            natural_end_generation: AtomicU64::new(0),
             play_requested: AtomicBool::new(false),
             output_rate: rate,
             output_channels: channels,
@@ -112,6 +121,10 @@ impl AudioEngine {
             spectrum: RwLock::new(vec![0.0; 48]),
             repeat: AtomicU8::new(0),
             shuffle: AtomicBool::new(false),
+            equalizer_enabled: AtomicBool::new(false),
+            equalizer_bands: std::array::from_fn(|_| AtomicU32::new(0.0f32.to_bits())),
+            equalizer_preamp: AtomicU32::new(0.0f32.to_bits()),
+            equalizer_revision: AtomicU64::new(1),
         });
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
         let output_shared = shared.clone();
@@ -272,6 +285,37 @@ impl AudioEngine {
         self.shared.shuffle.store(value, Ordering::Relaxed);
         self.snapshot()
     }
+    pub fn repeat_mode(&self) -> &'static str {
+        match self.shared.repeat.load(Ordering::Relaxed) {
+            1 => "all",
+            2 => "one",
+            _ => "off",
+        }
+    }
+    pub fn shuffle_enabled(&self) -> bool {
+        self.shared.shuffle.load(Ordering::Relaxed)
+    }
+    pub fn natural_end_generation(&self) -> u64 {
+        self.shared.natural_end_generation.load(Ordering::Acquire)
+    }
+    pub fn set_equalizer(&self, enabled: bool, bands: &[f32], preamp_db: f32) {
+        for (target, value) in self.shared.equalizer_bands.iter().zip(bands.iter()) {
+            target.store(
+                value.clamp(EQ_MIN_DB, EQ_MAX_DB).to_bits(),
+                Ordering::Relaxed,
+            );
+        }
+        self.shared.equalizer_preamp.store(
+            preamp_db.clamp(PREAMP_MIN_DB, PREAMP_MAX_DB).to_bits(),
+            Ordering::Relaxed,
+        );
+        self.shared
+            .equalizer_enabled
+            .store(enabled, Ordering::Relaxed);
+        self.shared
+            .equalizer_revision
+            .fetch_add(1, Ordering::Release);
+    }
     pub fn snapshot(&self) -> PlaybackSnapshot {
         let track = self.shared.track.read().ok();
         let samples = self.shared.position_samples.load(Ordering::Relaxed);
@@ -295,13 +339,8 @@ impl AudioEngine {
             duration_ms: track.as_ref().map(|t| t.duration_ms).unwrap_or(0),
             volume: f32::from_bits(self.shared.volume.load(Ordering::Relaxed)),
             buffered_ms: self.shared.queue.len() as u64 * 1000 / divisor.max(1),
-            repeat: match self.shared.repeat.load(Ordering::Relaxed) {
-                1 => "all",
-                2 => "one",
-                _ => "off",
-            }
-            .into(),
-            shuffle: self.shared.shuffle.load(Ordering::Relaxed),
+            repeat: self.repeat_mode().into(),
+            shuffle: self.shuffle_enabled(),
             spectrum: self
                 .shared
                 .spectrum
@@ -331,6 +370,101 @@ fn create_output_stream(
     }
 }
 
+#[derive(Clone, Copy)]
+struct Biquad {
+    b0: f32,
+    b1: f32,
+    b2: f32,
+    a1: f32,
+    a2: f32,
+    z1: f32,
+    z2: f32,
+}
+
+impl Default for Biquad {
+    fn default() -> Self {
+        Self {
+            b0: 1.0,
+            b1: 0.0,
+            b2: 0.0,
+            a1: 0.0,
+            a2: 0.0,
+            z1: 0.0,
+            z2: 0.0,
+        }
+    }
+}
+
+impl Biquad {
+    fn set_peaking(&mut self, sample_rate: f32, frequency: f32, gain_db: f32) {
+        let nyquist_safe_frequency = frequency.min(sample_rate * 0.45);
+        let amplitude = 10.0f32.powf(gain_db / 40.0);
+        let omega = std::f32::consts::TAU * nyquist_safe_frequency / sample_rate;
+        let alpha = omega.sin() / (2.0 * std::f32::consts::SQRT_2);
+        let cosine = omega.cos();
+        let a0 = 1.0 + alpha / amplitude;
+        self.b0 = (1.0 + alpha * amplitude) / a0;
+        self.b1 = (-2.0 * cosine) / a0;
+        self.b2 = (1.0 - alpha * amplitude) / a0;
+        self.a1 = (-2.0 * cosine) / a0;
+        self.a2 = (1.0 - alpha / amplitude) / a0;
+    }
+
+    fn process(&mut self, input: f32) -> f32 {
+        let output = self.b0 * input + self.z1;
+        self.z1 = self.b1 * input - self.a1 * output + self.z2;
+        self.z2 = self.b2 * input - self.a2 * output;
+        output
+    }
+}
+
+struct EqualizerProcessor {
+    sample_rate: f32,
+    filters: Vec<Vec<Biquad>>,
+    current_mix: f32,
+    target_mix: f32,
+    current_preamp: f32,
+    target_preamp: f32,
+}
+
+impl EqualizerProcessor {
+    fn new(sample_rate: u32, channels: usize) -> Self {
+        Self {
+            sample_rate: sample_rate as f32,
+            filters: vec![vec![Biquad::default(); EQ_FREQUENCIES.len()]; channels],
+            current_mix: 0.0,
+            target_mix: 0.0,
+            current_preamp: 1.0,
+            target_preamp: 1.0,
+        }
+    }
+
+    fn configure(&mut self, enabled: bool, bands: &[f32], preamp_db: f32) {
+        self.target_mix = if enabled { 1.0 } else { 0.0 };
+        self.target_preamp = 10.0f32.powf(preamp_db / 20.0);
+        for channel in &mut self.filters {
+            for ((filter, frequency), gain) in channel
+                .iter_mut()
+                .zip(EQ_FREQUENCIES)
+                .zip(bands.iter().copied())
+            {
+                filter.set_peaking(self.sample_rate, frequency, gain);
+            }
+        }
+    }
+
+    fn process(&mut self, channel: usize, input: f32) -> f32 {
+        self.current_mix += (self.target_mix - self.current_mix) * 0.002;
+        self.current_preamp += (self.target_preamp - self.current_preamp) * 0.002;
+        let mut filtered = input;
+        for filter in &mut self.filters[channel] {
+            filtered = filter.process(filtered);
+        }
+        let wet = filtered * self.current_preamp;
+        input + (wet - input) * self.current_mix
+    }
+}
+
 fn build_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
@@ -342,10 +476,24 @@ where
     let error_shared = shared.clone();
     let channels = shared.output_channels as usize;
     let mut current_gain = 0.0f32;
+    let mut equalizer = EqualizerProcessor::new(config.sample_rate.0, channels);
+    let mut equalizer_revision = 0;
     device
         .build_output_stream(
             config,
             move |output: &mut [T], _| {
+                let active_equalizer_revision = shared.equalizer_revision.load(Ordering::Acquire);
+                if active_equalizer_revision != equalizer_revision {
+                    equalizer_revision = active_equalizer_revision;
+                    let bands: [f32; 10] = std::array::from_fn(|index| {
+                        f32::from_bits(shared.equalizer_bands[index].load(Ordering::Relaxed))
+                    });
+                    equalizer.configure(
+                        shared.equalizer_enabled.load(Ordering::Relaxed),
+                        &bands,
+                        f32::from_bits(shared.equalizer_preamp.load(Ordering::Relaxed)),
+                    );
+                }
                 let mut written_frames = 0u64;
                 for frame in output.chunks_mut(channels) {
                     let playing = shared.status.load(Ordering::Acquire) == PLAYING;
@@ -360,7 +508,7 @@ where
                         let active_generation = shared.generation.load(Ordering::Acquire);
                         let mut complete_frame = true;
                         let mut mono_sample = 0.0f32;
-                        for sample in frame.iter_mut() {
+                        for (channel, sample) in frame.iter_mut().enumerate() {
                             let queued = loop {
                                 match shared.queue.pop() {
                                     Some(queued) if queued.generation == active_generation => {
@@ -371,8 +519,10 @@ where
                                 }
                             };
                             if let Some(queued) = queued {
-                                mono_sample += queued.value;
-                                *sample = T::from_sample(queued.value * current_gain);
+                                let processed = equalizer.process(channel, queued.value);
+                                let output_value = (processed * current_gain).clamp(-1.0, 1.0);
+                                mono_sample += output_value;
+                                *sample = T::from_sample(output_value);
                             } else {
                                 *sample = T::from_sample(0.0);
                                 complete_frame = false;
@@ -388,6 +538,10 @@ where
                         } else if shared.decode_done.load(Ordering::Acquire) {
                             shared.play_requested.store(false, Ordering::Release);
                             shared.status.store(STOPPED, Ordering::Release);
+                            shared.natural_end_generation.store(
+                                shared.generation.load(Ordering::Acquire),
+                                Ordering::Release,
+                            );
                         } else {
                             shared.status.store(LOADING, Ordering::Release);
                         }
@@ -397,6 +551,10 @@ where
                             if shared.decode_done.load(Ordering::Acquire) {
                                 shared.play_requested.store(false, Ordering::Release);
                                 shared.status.store(STOPPED, Ordering::Release);
+                                shared.natural_end_generation.store(
+                                    shared.generation.load(Ordering::Acquire),
+                                    Ordering::Release,
+                                );
                             } else {
                                 shared.status.store(LOADING, Ordering::Release);
                             }
@@ -620,6 +778,9 @@ fn update_playback_readiness(shared: &Shared) {
     } else if wants_playback && decoder_finished && shared.queue.is_empty() {
         shared.play_requested.store(false, Ordering::Release);
         shared.status.store(STOPPED, Ordering::Release);
+        shared
+            .natural_end_generation
+            .store(shared.generation.load(Ordering::Acquire), Ordering::Release);
     } else if wants_playback {
         shared.status.store(LOADING, Ordering::Release);
     } else if shared.status.load(Ordering::Acquire) == LOADING && decoder_finished {

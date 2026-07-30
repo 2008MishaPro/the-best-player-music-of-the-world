@@ -1,4 +1,5 @@
 pub mod analysis;
+pub mod equalizer;
 pub mod library;
 pub mod playback;
 pub mod playlists;

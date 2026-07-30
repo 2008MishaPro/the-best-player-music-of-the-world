@@ -2,11 +2,13 @@ import { useRef, useState } from "react";
 import { wrap } from "@reatom/core";
 import { reatomComponent } from "@reatom/react";
 import { AudioWaveform, BarChart3, Heart, ListMusic, Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, Volume2 } from "lucide-react";
+import { queueAtom } from "@/entities/playback-queue";
 import { trackDisplayArtist, trackDisplayTitle } from "@/entities/track";
 import {
   currentTrackAtom, nextAction, playbackSnapshotAtom, previousAction, seekAction,
   setRepeatAction, setShuffleAction, setVolumeAction, togglePlaybackAction,
 } from "@/features/control-playback";
+import { EqualizerPopover } from "@/features/manage-equalizer";
 import { queueOpenAtom } from "@/features/manage-playback-queue";
 import { toggleFavoriteAction } from "@/features/toggle-track-favorite";
 import { formatDuration } from "@/shared/lib/format.ts";
@@ -61,9 +63,15 @@ function SeekControl({ positionMs, durationMs }: SeekControlProps) {
 export const PlayerBar = reatomComponent(() => {
   const snapshot = playbackSnapshotAtom();
   const track = currentTrackAtom();
+  const queue = queueAtom();
   const [waveformOpen, setWaveformOpen] = useState(false);
   const [spectrumOpen, setSpectrumOpen] = useState(false);
   const repeatIcon = snapshot.repeat === "one" ? <Repeat1 /> : <Repeat />;
+  const repeatLabel = snapshot.repeat === "off"
+    ? "Включить повтор очереди"
+    : snapshot.repeat === "all"
+      ? "Повторять текущий трек"
+      : "Выключить повтор";
   const cycleRepeat = () => setRepeatAction(snapshot.repeat === "off" ? "all" : snapshot.repeat === "all" ? "one" : "off");
   const trackTitle = track ? trackDisplayTitle(track) : "";
   return (
@@ -76,15 +84,16 @@ export const PlayerBar = reatomComponent(() => {
       </div>
       <div className="transport">
         <div className="transport-buttons">
-          <Button size="icon" variant="ghost" className={snapshot.shuffle ? "is-active" : ""} onClick={wrap(() => setShuffleAction(!snapshot.shuffle))}><Shuffle /></Button>
-          <Button size="icon" variant="ghost" onClick={wrap(previousAction)}><SkipBack fill="currentColor" /></Button>
-          <Button size="icon" className="play-main" onClick={wrap(togglePlaybackAction)} disabled={!track}>{snapshot.status === "playing" ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}</Button>
-          <Button size="icon" variant="ghost" onClick={wrap(nextAction)}><SkipForward fill="currentColor" /></Button>
-          <Button size="icon" variant="ghost" className={snapshot.repeat !== "off" ? "is-active" : ""} onClick={wrap(cycleRepeat)}>{repeatIcon}</Button>
+          <Button size="icon" variant="ghost" className={snapshot.shuffle ? "is-active" : ""} onClick={wrap(() => setShuffleAction(!snapshot.shuffle))} aria-label={snapshot.shuffle ? "Выключить перемешивание" : "Включить перемешивание"} title={snapshot.shuffle ? "Перемешивание включено" : "Перемешивание выключено"}><Shuffle /></Button>
+          <Button size="icon" variant="ghost" onClick={wrap(previousAction)} disabled={!track && !queue.itemIds.length} aria-label="Предыдущий трек"><SkipBack fill="currentColor" /></Button>
+          <Button size="icon" className="play-main" onClick={wrap(togglePlaybackAction)} disabled={!track && !queue.itemIds.length} aria-label={snapshot.status === "playing" ? "Пауза" : "Воспроизвести"}>{snapshot.status === "playing" ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}</Button>
+          <Button size="icon" variant="ghost" onClick={wrap(nextAction)} disabled={!track && !queue.itemIds.length} aria-label="Следующий трек"><SkipForward fill="currentColor" /></Button>
+          <Button size="icon" variant="ghost" className={snapshot.repeat !== "off" ? "is-active" : ""} onClick={wrap(cycleRepeat)} aria-label={repeatLabel} title={repeatLabel}>{repeatIcon}</Button>
         </div>
         <SeekControl positionMs={snapshot.positionMs} durationMs={snapshot.durationMs} />
       </div>
       <div className="player-tools">
+        <EqualizerPopover />
         <Button size="icon" variant="ghost" className={waveformOpen ? "is-active" : ""} onClick={() => setWaveformOpen((open) => !open)} disabled={!track} aria-label="Показать waveform"><AudioWaveform /></Button>
         <Button size="icon" variant="ghost" className={spectrumOpen ? "is-active" : ""} onClick={() => setSpectrumOpen((open) => !open)} aria-label="Показать спектр частот"><BarChart3 /></Button>
         <Button size="icon" variant="ghost" onClick={() => queueOpenAtom.set(!queueOpenAtom())}><ListMusic /></Button>

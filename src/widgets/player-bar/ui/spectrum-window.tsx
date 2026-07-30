@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { reatomComponent } from "@reatom/react";
 import { Activity, GripHorizontal, X } from "lucide-react";
+import { displayedThemeAtom } from "@/entities/theme";
 import { Button } from "@/shared/ui";
 
 type SpectrumWindowProps = {
@@ -10,8 +12,9 @@ type SpectrumWindowProps = {
   onClose: () => void;
 };
 
-function SpectrumCanvas({ bins }: { bins: number[] }) {
+const SpectrumCanvas = reatomComponent(({ bins }: { bins: number[] }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const colors = displayedThemeAtom().colors;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -25,7 +28,7 @@ function SpectrumCanvas({ bins }: { bins: number[] }) {
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, rect.width, rect.height);
 
-    context.strokeStyle = "rgba(255,255,255,.055)";
+    context.strokeStyle = colors.canvasGrid;
     context.lineWidth = 1;
     for (let line = 1; line < 4; line += 1) {
       const y = (rect.height * line) / 4;
@@ -38,19 +41,19 @@ function SpectrumCanvas({ bins }: { bins: number[] }) {
     const gap = 3;
     const width = Math.max(2, (rect.width - gap * Math.max(0, bins.length - 1)) / Math.max(1, bins.length));
     const gradient = context.createLinearGradient(0, rect.height, 0, 0);
-    gradient.addColorStop(0, "#a36820");
-    gradient.addColorStop(.58, "#f3b33d");
-    gradient.addColorStop(1, "#ffe09a");
+    gradient.addColorStop(0, colors.visualizerLow);
+    gradient.addColorStop(.58, colors.accent);
+    gradient.addColorStop(1, colors.visualizerHigh);
     context.fillStyle = gradient;
     bins.forEach((value, index) => {
       const height = Math.max(2, value * (rect.height - 20));
       const x = index * (width + gap);
       context.fillRect(x, rect.height - height, width, height);
     });
-  }, [bins]);
+  }, [bins, colors]);
 
   return <canvas ref={canvasRef} className="spectrum-canvas" />;
-}
+}, "SpectrumCanvas");
 
 export function SpectrumWindow({ open, bins, trackTitle, playing, onClose }: SpectrumWindowProps) {
   const panelRef = useRef<HTMLDivElement>(null);

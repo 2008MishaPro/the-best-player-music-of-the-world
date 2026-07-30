@@ -1,8 +1,11 @@
 import { useEffect, useRef } from "react";
+import { reatomComponent } from "@reatom/react";
+import { displayedThemeAtom } from "@/entities/theme";
 import type { PeakFrame } from "@/entities/track-analysis";
 
-export function PeakMap({ frames }: { frames: PeakFrame[] }) {
+export const PeakMap = reatomComponent(({ frames }: { frames: PeakFrame[] }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const colors = displayedThemeAtom().colors;
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -17,9 +20,13 @@ export function PeakMap({ frames }: { frames: PeakFrame[] }) {
     const width = rect.width / Math.max(frames.length, 1);
     frames.forEach((frame, index) => {
       const normalized = Math.max(0, Math.min(1, (frame.peakDb + 60) / 60));
-      ctx.fillStyle = frame.clippingSamples > 0 ? "#e75555" : normalized > 0.85 ? "#f3b33d" : "#4f8c7a";
+      ctx.fillStyle = frame.clippingSamples > 0
+        ? colors.danger
+        : normalized > 0.85
+          ? colors.accent
+          : colors.green;
       ctx.fillRect(index * width, rect.height * (1 - normalized), Math.max(1, width), rect.height * normalized);
     });
-  }, [frames]);
+  }, [colors, frames]);
   return <canvas className="peak-canvas" ref={canvasRef} />;
-}
+}, "PeakMap");
