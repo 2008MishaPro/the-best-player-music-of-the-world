@@ -4,7 +4,14 @@ import { Link } from "@tanstack/react-router";
 import { AudioWaveform, Clock3, Heart, Home, Library, ListMusic, Pin, Plus, Settings } from "lucide-react";
 import { playlistsAtom } from "@/entities/playlist";
 import { CreatePlaylistDialog } from "@/features/create-playlist";
-import { Button } from "@/shared/ui";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui";
 
 const navigation = [
   { to: "/", label: "Главная", icon: Home },
@@ -16,9 +23,34 @@ const navigation = [
 export const Sidebar = reatomComponent(() => {
   const playlists = playlistsAtom();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [mobilePlaylistsOpen, setMobilePlaylistsOpen] = useState(false);
 
   return (
     <>
+      <header className="mobile-header">
+        <Link to="/" className="mobile-brand" aria-label="Resonance — главная">
+          <span className="brand-mark"><AudioWaveform /></span>
+          <span>Resonance<small>local audio</small></span>
+        </Link>
+        <div>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setCreateDialogOpen(true)}
+            aria-label="Создать плейлист"
+          >
+            <Plus />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setMobilePlaylistsOpen(true)}
+            aria-label="Открыть плейлисты"
+          >
+            <ListMusic />
+          </Button>
+        </div>
+      </header>
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark"><AudioWaveform /></span><span>Resonance<small>local audio</small></span></div>
         <nav className="sidebar-nav">
@@ -39,6 +71,38 @@ export const Sidebar = reatomComponent(() => {
         </div>
         <Link className="settings-link" to="/settings" activeProps={{ className: "active" }}><Settings />Настройки</Link>
       </aside>
+      <Dialog open={mobilePlaylistsOpen} onOpenChange={setMobilePlaylistsOpen}>
+        <DialogContent className="mobile-playlists-dialog">
+          <DialogHeader>
+            <span className="dialog-icon"><ListMusic /></span>
+            <div>
+              <DialogTitle>Плейлисты</DialogTitle>
+              <DialogDescription>Ваши подборки музыки.</DialogDescription>
+            </div>
+          </DialogHeader>
+          <div className="mobile-playlist-list">
+            {playlists.map((playlist) => (
+              <Link
+                key={playlist.id}
+                to="/playlist/$playlistId"
+                params={{ playlistId: playlist.id }}
+                onClick={() => setMobilePlaylistsOpen(false)}
+              >
+                <span><ListMusic /></span>
+                <span><strong>{playlist.name}</strong><small>{playlist.trackCount} треков</small></span>
+                {playlist.isPinned && <Pin className="playlist-pin" aria-label="Закреплён" />}
+              </Link>
+            ))}
+            {!playlists.length && <div className="dialog-empty"><ListMusic /><strong>Плейлистов пока нет</strong><span>Создайте первый плейлист и добавьте в него любимые треки.</span></div>}
+          </div>
+          <Button onClick={() => {
+            setMobilePlaylistsOpen(false);
+            setCreateDialogOpen(true);
+          }}>
+            <Plus /> Создать плейлист
+          </Button>
+        </DialogContent>
+      </Dialog>
       <CreatePlaylistDialog
         open={createDialogOpen}
         suggestedName={`Плейлист ${playlists.length + 1}`}

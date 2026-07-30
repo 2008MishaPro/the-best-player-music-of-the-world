@@ -93,12 +93,12 @@ export const PlayerBar = reatomComponent(() => {
         <SeekControl positionMs={snapshot.positionMs} durationMs={snapshot.durationMs} />
       </div>
       <div className="player-tools">
-        <EqualizerPopover />
-        <Button size="icon" variant="ghost" className={waveformOpen ? "is-active" : ""} onClick={() => setWaveformOpen((open) => !open)} disabled={!track} aria-label="Показать waveform"><AudioWaveform /></Button>
-        <Button size="icon" variant="ghost" className={spectrumOpen ? "is-active" : ""} onClick={() => setSpectrumOpen((open) => !open)} aria-label="Показать спектр частот"><BarChart3 /></Button>
-        <Button size="icon" variant="ghost" onClick={() => queueOpenAtom.set(!queueOpenAtom())}><ListMusic /></Button>
-        <Volume2 />
-        <input aria-label="Громкость" type="range" min={0} max={1} step={0.01} value={snapshot.volume} onChange={(event) => setVolumeAction(Number(event.currentTarget.value))} />
+        <span className="player-tool--desktop"><EqualizerPopover /></span>
+        <Button size="icon" variant="ghost" className={`player-tool--desktop ${waveformOpen ? "is-active" : ""}`} onClick={() => setWaveformOpen((open) => !open)} disabled={!track} aria-label="Показать waveform"><AudioWaveform /></Button>
+        <Button size="icon" variant="ghost" className={`player-tool--desktop ${spectrumOpen ? "is-active" : ""}`} onClick={() => setSpectrumOpen((open) => !open)} aria-label="Показать спектр частот"><BarChart3 /></Button>
+        <Button size="icon" variant="ghost" onClick={() => queueOpenAtom.set(!queueOpenAtom())} aria-label="Открыть очередь" title="Открыть очередь"><ListMusic /></Button>
+        <Volume2 className="player-tool--desktop" />
+        <input className="player-tool--desktop" aria-label="Громкость" type="range" min={0} max={1} step={0.01} value={snapshot.volume} onChange={(event) => setVolumeAction(Number(event.currentTarget.value))} />
       </div>
       </footer>
       <PlayerWaveformPanel

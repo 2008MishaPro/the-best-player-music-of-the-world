@@ -46,7 +46,7 @@ export const TrackList = reatomComponent<TrackListProps>(({ tracks, emptyMessage
           <span className="muted ellipsis">{track.album || "Без альбома"}</span>
           <span className="muted mono">{formatDuration(track.durationMs)}</span>
           <div className="track-actions">
-            {onAddToPlaylist && <Button size="icon" variant="ghost" onClick={() => onAddToPlaylist(track.id)} aria-label="Добавить в плейлист"><ListPlus /></Button>}
+            {onAddToPlaylist && <Button size="icon" variant="ghost" className="track-add-playlist" onClick={() => onAddToPlaylist(track.id)} aria-label="Добавить в плейлист"><ListPlus /></Button>}
             <Button size="icon" variant="ghost" className={track.isFavorite ? "is-favorite" : ""} onClick={wrap(() => toggleFavoriteAction(track.id))} aria-label="Избранное"><Heart fill={track.isFavorite ? "currentColor" : "none"} /></Button>
             <TrackActionsMenu track={track} />
           </div>
