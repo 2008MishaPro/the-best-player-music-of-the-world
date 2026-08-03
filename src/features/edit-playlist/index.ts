@@ -1,1 +1,1 @@
-export { deletePlaylistAction, pinPlaylistAction, renamePlaylistAction } from "./model/edit-playlist.ts";
+export { deletePlaylistAction, pinPlaylistAction, renamePlaylistAction, reorderPlaylistsAction } from "./model/edit-playlist.ts";

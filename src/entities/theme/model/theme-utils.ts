@@ -2,6 +2,8 @@ import type { AppTheme, ThemeColors, ThemeSeed } from "./types.ts";
 
 export const DEFAULT_THEME_ID = "builtin-resonance";
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const BACKGROUND_IMAGE = /^data:image\/(?:png|jpeg|webp|avif|gif);base64,[a-z0-9+/=]+$/i;
+const MAX_BACKGROUND_IMAGE_LENGTH = 14_000_000;
 
 const normalizeHex = (value: string) =>
   HEX_COLOR.test(value) ? value.toLowerCase() : "#000000";
@@ -55,12 +57,17 @@ export const createTheme = (
   isBuiltin: boolean,
   source: ThemeSeed,
 ): AppTheme => {
-  const seed = {
-    ...source,
+  const seed: ThemeSeed = {
+    mode: source.mode,
     background: normalizeHex(source.background),
     surface: normalizeHex(source.surface),
     accent: normalizeHex(source.accent),
     text: normalizeHex(source.text),
+    backgroundImage: source.backgroundImage
+      && source.backgroundImage.length <= MAX_BACKGROUND_IMAGE_LENGTH
+      && BACKGROUND_IMAGE.test(source.backgroundImage)
+      ? source.backgroundImage
+      : null,
   };
   const colors: ThemeColors = {
     bg: seed.background,
@@ -156,6 +163,10 @@ export const applyThemeToDocument = (theme: AppTheme, animate = true) => {
     root.style.setProperty(variable, theme.colors[key as keyof ThemeColors]);
   }
   root.style.colorScheme = theme.seed.mode;
+  root.style.setProperty(
+    "--theme-background-image",
+    theme.seed.backgroundImage ? `url("${theme.seed.backgroundImage}")` : "none",
+  );
   root.dataset.theme = theme.id;
   root.dataset.themeMode = theme.seed.mode;
   if (animate) window.setTimeout(() => root.classList.remove("theme-changing"), 220);
@@ -164,4 +175,7 @@ export const applyThemeToDocument = (theme: AppTheme, animate = true) => {
 export const isThemeSeed = (value: ThemeSeed) =>
   ["dark", "light"].includes(value.mode)
   && [value.background, value.surface, value.accent, value.text].every((color) =>
-    HEX_COLOR.test(color));
+    HEX_COLOR.test(color))
+  && (value.backgroundImage == null
+    || (value.backgroundImage.length <= MAX_BACKGROUND_IMAGE_LENGTH
+      && BACKGROUND_IMAGE.test(value.backgroundImage)));

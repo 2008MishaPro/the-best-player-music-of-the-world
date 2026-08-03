@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">"music-player"</string>
+    <string name="main_activity_title">"music-player"</string>
+</resources>

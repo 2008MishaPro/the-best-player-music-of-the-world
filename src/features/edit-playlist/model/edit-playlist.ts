@@ -15,3 +15,8 @@ export const pinPlaylistAction = action(async (playlistId: string, pinned: boole
   await playlistApi.setPinned(playlistId, pinned);
   await Promise.all([loadPlaylistsAction(), loadPlaylistAction(playlistId)]);
 }, "pinPlaylistAction");
+
+export const reorderPlaylistsAction = action(async (playlistIds: string[]) => {
+  await playlistApi.reorder(playlistIds);
+  await loadPlaylistsAction();
+}, "reorderPlaylistsAction");

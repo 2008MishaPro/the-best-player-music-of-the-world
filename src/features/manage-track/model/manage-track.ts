@@ -14,11 +14,17 @@ export const revealTrackAction = action(async (filePath: string) => {
 }, "revealTrackAction");
 
 export const removeTrackFromLibraryAction = action(async (trackId: string) => {
+  await removeTracksFromLibraryAction([trackId]);
+}, "removeTrackFromLibraryAction");
+
+export const removeTracksFromLibraryAction = action(async (trackIds: string[]) => {
   const activePlaylistId = activePlaylistAtom()?.id;
-  await libraryApi.removeTrack(trackId);
+  for (const trackId of [...new Set(trackIds)]) {
+    await libraryApi.removeTrack(trackId);
+  }
   await Promise.all([
     loadTracksAction(),
     loadPlaylistsAction(),
     activePlaylistId ? loadPlaylistAction(activePlaylistId) : Promise.resolve(),
   ]);
-}, "removeTrackFromLibraryAction");
+}, "removeTracksFromLibraryAction");

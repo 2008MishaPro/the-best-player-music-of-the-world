@@ -6,6 +6,7 @@ export type ThemeSeed = {
   surface: string;
   accent: string;
   text: string;
+  backgroundImage?: string | null;
 };
 
 export type ThemeColors = {

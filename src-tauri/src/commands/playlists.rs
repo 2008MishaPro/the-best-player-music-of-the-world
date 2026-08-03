@@ -8,11 +8,11 @@ use tauri::State;
 use uuid::Uuid;
 
 async fn get_all(state: &AppState) -> AppResult<Vec<PlaylistDto>> {
-    Ok(sqlx::query_as::<_, PlaylistDto>("SELECT p.id,p.name,p.description,p.cover_path,p.is_pinned,p.created_at,p.updated_at,COUNT(pt.id) AS track_count FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id=p.id GROUP BY p.id ORDER BY p.is_pinned DESC,p.updated_at DESC").fetch_all(&state.db).await?)
+    Ok(sqlx::query_as::<_, PlaylistDto>("SELECT p.id,p.name,p.description,p.cover_path,p.is_pinned,p.position,p.created_at,p.updated_at,COUNT(pt.id) AS track_count FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id=p.id GROUP BY p.id ORDER BY p.is_pinned DESC,p.position,p.updated_at DESC").fetch_all(&state.db).await?)
 }
 
 async fn get_playlist(state: &AppState, id: &str) -> AppResult<PlaylistDto> {
-    sqlx::query_as::<_, PlaylistDto>("SELECT p.id,p.name,p.description,p.cover_path,p.is_pinned,p.created_at,p.updated_at,COUNT(pt.id) AS track_count FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id=p.id WHERE p.id=? GROUP BY p.id")
+    sqlx::query_as::<_, PlaylistDto>("SELECT p.id,p.name,p.description,p.cover_path,p.is_pinned,p.position,p.created_at,p.updated_at,COUNT(pt.id) AS track_count FROM playlists p LEFT JOIN playlist_tracks pt ON pt.playlist_id=p.id WHERE p.id=? GROUP BY p.id")
         .bind(id).fetch_optional(&state.db).await?.ok_or_else(|| AppError::not_found("Плейлист не найден"))
 }
 
@@ -46,6 +46,7 @@ pub async fn playlist_get_by_id(
         description: playlist.description,
         cover_path: playlist.cover_path,
         is_pinned: playlist.is_pinned,
+        position: playlist.position,
         created_at: playlist.created_at,
         updated_at: playlist.updated_at,
         track_count: playlist.track_count,
@@ -61,9 +62,13 @@ pub async fn playlist_create(name: String, state: State<'_, AppState>) -> AppRes
     }
     let id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
-    sqlx::query("INSERT INTO playlists(id,name,created_at,updated_at) VALUES(?,?,?,?)")
+    let position: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(position),-1)+1 FROM playlists")
+        .fetch_one(&state.db)
+        .await?;
+    sqlx::query("INSERT INTO playlists(id,name,position,created_at,updated_at) VALUES(?,?,?,?,?)")
         .bind(&id)
         .bind(name)
+        .bind(position)
         .bind(now)
         .bind(now)
         .execute(&state.db)
@@ -214,4 +219,29 @@ pub async fn playlist_set_pinned(
         .execute(&state.db)
         .await?;
     get_playlist(&state, &playlist_id).await
+}
+
+#[tauri::command]
+pub async fn playlist_reorder(
+    playlist_ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> AppResult<()> {
+    let current: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM playlists ORDER BY is_pinned DESC,position,updated_at DESC",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    if current.len() != playlist_ids.len() || !current.iter().all(|id| playlist_ids.contains(id)) {
+        return Err(AppError::validation("Список плейлистов некорректен"));
+    }
+    let mut transaction = state.db.begin().await?;
+    for (position, id) in playlist_ids.iter().enumerate() {
+        sqlx::query("UPDATE playlists SET position=? WHERE id=?")
+            .bind(position as i64)
+            .bind(id)
+            .execute(&mut *transaction)
+            .await?;
+    }
+    transaction.commit().await?;
+    Ok(())
 }

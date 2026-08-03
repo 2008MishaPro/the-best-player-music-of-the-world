@@ -16,6 +16,21 @@ describe("createTheme", () => {
     expect(theme.colors.panel2).toMatch(/^#[0-9a-f]{6}$/);
     expect(theme.colors.border).not.toBe(theme.colors.panel);
     expect(["#0a0c10", "#ffffff"]).toContain(theme.colors.accentContrast);
+    expect(theme.seed.backgroundImage).toBeNull();
+  });
+
+  it("keeps a supported custom background image", () => {
+    const backgroundImage = "data:image/png;base64,aGVsbG8=";
+    const theme = createTheme("custom-image", "Image", false, {
+      mode: "dark",
+      background: "#080b10",
+      surface: "#121821",
+      accent: "#55aaff",
+      text: "#f5f7fa",
+      backgroundImage,
+    });
+
+    expect(theme.seed.backgroundImage).toBe(backgroundImage);
   });
 
   it("keeps the application accent readable on a light accent", () => {

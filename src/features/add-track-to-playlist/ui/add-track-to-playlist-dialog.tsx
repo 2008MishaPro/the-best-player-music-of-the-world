@@ -13,31 +13,31 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui";
-import { addTrackToPlaylistsAction } from "../model/playlist-tracks.ts";
+import { addTracksToPlaylistsAction } from "../model/playlist-tracks.ts";
 
 type AddTrackToPlaylistDialogProps = {
   open: boolean;
-  trackId: string | null;
+  trackIds: string[];
   trackTitle: string;
   onOpenChange: (open: boolean) => void;
 };
 
 export const AddTrackToPlaylistDialog = reatomComponent<AddTrackToPlaylistDialogProps>(({
   open,
-  trackId,
+  trackIds,
   trackTitle,
   onOpenChange,
 }) => {
   const playlists = playlistsAtom();
   if (!open) return null;
-  return <OpenAddTrackToPlaylistDialog playlists={playlists} trackId={trackId} trackTitle={trackTitle} onOpenChange={onOpenChange} />;
+  return <OpenAddTrackToPlaylistDialog playlists={playlists} trackIds={trackIds} trackTitle={trackTitle} onOpenChange={onOpenChange} />;
 }, "AddTrackToPlaylistDialog");
 
 type OpenAddTrackToPlaylistDialogProps = Omit<AddTrackToPlaylistDialogProps, "open"> & {
   playlists: Playlist[];
 };
 
-function OpenAddTrackToPlaylistDialog({ playlists, trackId, trackTitle, onOpenChange }: OpenAddTrackToPlaylistDialogProps) {
+function OpenAddTrackToPlaylistDialog({ playlists, trackIds, trackTitle, onOpenChange }: OpenAddTrackToPlaylistDialogProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -53,20 +53,22 @@ function OpenAddTrackToPlaylistDialog({ playlists, trackId, trackTitle, onOpenCh
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!trackId || !selectedIds.size) return;
+    if (!trackIds.length || !selectedIds.size) return;
     const playlistIds = [...selectedIds];
 
     setSubmitting(true);
     setError(null);
     try {
-      const insertedCount = await addTrackToPlaylistsAction(playlistIds, trackId);
+      const insertedCount = await addTracksToPlaylistsAction(playlistIds, trackIds);
       if (insertedCount === 0) {
-        toast.info("Трек уже есть в выбранных плейлистах");
+        toast.info(trackIds.length === 1
+          ? "Трек уже есть в выбранных плейлистах"
+          : "Выбранные треки уже есть в этих плейлистах");
       } else {
-        toast.success("Трек добавлен", {
-          description: insertedCount === 1 && playlistIds.length === 1
+        toast.success(trackIds.length === 1 ? "Трек добавлен" : "Треки добавлены", {
+          description: trackIds.length === 1 && insertedCount === 1 && playlistIds.length === 1
             ? playlists.find((playlist) => playlist.id === playlistIds[0])?.name
-            : `Новых добавлений: ${insertedCount} из ${playlistIds.length}`,
+            : `Новых добавлений: ${insertedCount}`,
         });
       }
       onOpenChange(false);
@@ -85,7 +87,11 @@ function OpenAddTrackToPlaylistDialog({ playlists, trackId, trackTitle, onOpenCh
             <span className="dialog-icon"><ListMusic /></span>
             <div>
               <DialogTitle>Добавить в плейлист</DialogTitle>
-              <DialogDescription>Выберите один или несколько плейлистов для трека «{trackTitle}».</DialogDescription>
+              <DialogDescription>
+                {trackIds.length === 1
+                  ? <>Выберите один или несколько плейлистов для трека «{trackTitle}».</>
+                  : <>Выберите плейлисты для {trackIds.length} отмеченных треков.</>}
+              </DialogDescription>
             </div>
           </DialogHeader>
 
@@ -119,7 +125,7 @@ function OpenAddTrackToPlaylistDialog({ playlists, trackId, trackTitle, onOpenCh
           {error && <p className="dialog-error">{error}</p>}
           <DialogFooter>
             <DialogClose asChild><Button type="button" variant="ghost" disabled={submitting}>Отмена</Button></DialogClose>
-            <Button type="submit" disabled={submitting || !selectedIds.size || !trackId}>
+            <Button type="submit" disabled={submitting || !selectedIds.size || !trackIds.length}>
               {submitting && <LoaderCircle className="spin" />}
               {selectedIds.size ? `Добавить · ${selectedIds.size}` : "Добавить"}
             </Button>

@@ -20,12 +20,17 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_store::Builder::default().build());
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+
+    builder
         .setup(|app| {
+            #[cfg(desktop)]
             if let Some(window) = app.get_webview_window("main") {
                 window.set_icon(tauri::include_image!("./icons/128x128.png"))?;
             }
@@ -76,6 +81,7 @@ pub fn run() {
             playlist_add_tracks,
             playlist_remove_items,
             playlist_reorder_items,
+            playlist_reorder,
             playlist_set_pinned,
             queue_get,
             queue_replace,

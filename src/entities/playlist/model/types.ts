@@ -6,6 +6,7 @@ export type Playlist = {
   description: string | null;
   coverPath: string | null;
   isPinned: boolean;
+  position: number;
   createdAt: number;
   updatedAt: number;
   trackCount: number;

@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { reatomComponent } from "@reatom/react";
-import { Check, Moon, Palette, Plus, Sun, Trash2, WandSparkles } from "lucide-react";
+import { Check, ImageOff, ImagePlus, Moon, Palette, Plus, Sun, Trash2, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
   activeThemeAtom,
@@ -27,12 +27,25 @@ import {
   Input,
 } from "@/shared/ui";
 
-const COLOR_FIELDS: Array<{ key: keyof Omit<ThemeSeed, "mode">; label: string; hint: string }> = [
+type ThemeColorKey = "background" | "surface" | "accent" | "text";
+
+const COLOR_FIELDS: Array<{ key: ThemeColorKey; label: string; hint: string }> = [
   { key: "background", label: "Фон", hint: "Основной фон приложения" },
   { key: "surface", label: "Поверхность", hint: "Панели, карточки и меню" },
   { key: "accent", label: "Акцент", hint: "Кнопки и активные элементы" },
   { key: "text", label: "Текст", hint: "Основной цвет текста" },
 ];
+
+const MAX_BACKGROUND_FILE_SIZE = 10 * 1024 * 1024;
+
+const readImage = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => typeof reader.result === "string"
+    ? resolve(reader.result)
+    : reject(new Error("Не удалось прочитать изображение"));
+  reader.onerror = () => reject(reader.error ?? new Error("Не удалось прочитать изображение"));
+  reader.readAsDataURL(file);
+});
 
 function ThemeCard({
   theme,
@@ -49,7 +62,10 @@ function ThemeCard({
     <article className={`theme-card ${active ? "theme-card--active" : ""}`}>
       <button type="button" className="theme-card-main" onClick={onSelect}>
         <span className="theme-preview" style={{
-          background: theme.colors.bg,
+          backgroundColor: theme.colors.bg,
+          backgroundImage: theme.seed.backgroundImage
+            ? `linear-gradient(color-mix(in srgb, ${theme.colors.bg} 34%, transparent), color-mix(in srgb, ${theme.colors.bg} 34%, transparent)), url("${theme.seed.backgroundImage}")`
+            : undefined,
           borderColor: theme.colors.border,
         }}>
           <i style={{ background: theme.colors.panel }} />
@@ -84,11 +100,11 @@ function ThemeColorField({
   value,
   onChange,
 }: {
-  colorKey: keyof Omit<ThemeSeed, "mode">;
+  colorKey: ThemeColorKey;
   label: string;
   hint: string;
   value: string;
-  onChange: (key: keyof Omit<ThemeSeed, "mode">, value: string) => void;
+  onChange: (key: ThemeColorKey, value: string) => void;
 }) {
   return (
     <label className="theme-color-field">
@@ -112,6 +128,7 @@ export const ThemeCustomizer = reatomComponent(() => {
   const [seed, setSeed] = useState<ThemeSeed>(activeTheme.seed);
   const [saving, setSaving] = useState(false);
   const [editorError, setEditorError] = useState<string | null>(null);
+  const backgroundInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!editorOpen) return;
@@ -167,9 +184,31 @@ export const ThemeCustomizer = reatomComponent(() => {
   };
 
   const updateSeed = (
-    key: keyof Omit<ThemeSeed, "mode">,
+    key: ThemeColorKey,
     value: string,
   ) => setSeed((current) => ({ ...current, [key]: value }));
+
+  const chooseBackground = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (![/^image\/png$/, /^image\/jpe?g$/, /^image\/webp$/, /^image\/avif$/, /^image\/gif$/]
+      .some((pattern) => pattern.test(file.type))) {
+      setEditorError("Поддерживаются PNG, JPEG, WebP, AVIF и GIF");
+      return;
+    }
+    if (file.size > MAX_BACKGROUND_FILE_SIZE) {
+      setEditorError("Изображение должно занимать не больше 10 МБ");
+      return;
+    }
+    try {
+      const backgroundImage = await readImage(file);
+      setSeed((current) => ({ ...current, backgroundImage }));
+      setEditorError(null);
+    } catch (error) {
+      setEditorError(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const builtinThemes = themes.filter((theme) => theme.isBuiltin);
   const customThemes = themes.filter((theme) => !theme.isBuiltin);
@@ -279,11 +318,38 @@ export const ThemeCustomizer = reatomComponent(() => {
                     />
                   ))}
                 </div>
+
+                <div className="theme-background-field">
+                  <div>
+                    <span><ImagePlus /></span>
+                    <p><strong>Фоновое изображение</strong><small>PNG, JPEG, WebP, AVIF или GIF до 10 МБ</small></p>
+                  </div>
+                  <input
+                    ref={backgroundInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
+                    onChange={(event) => void chooseBackground(event)}
+                    hidden
+                  />
+                  <div className="button-group">
+                    <Button type="button" variant="secondary" size="sm" onClick={() => backgroundInputRef.current?.click()}>
+                      <ImagePlus /> {seed.backgroundImage ? "Заменить" : "Выбрать изображение"}
+                    </Button>
+                    {seed.backgroundImage && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setSeed((current) => ({ ...current, backgroundImage: null }))}>
+                        <ImageOff /> Убрать
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="theme-live-preview" style={{
                 color: preview.colors.text,
-                background: preview.colors.bg,
+                backgroundColor: preview.colors.bg,
+                backgroundImage: seed.backgroundImage
+                  ? `linear-gradient(color-mix(in srgb, ${preview.colors.bg} 28%, transparent), color-mix(in srgb, ${preview.colors.bg} 28%, transparent)), url("${seed.backgroundImage}")`
+                  : undefined,
                 borderColor: preview.colors.border,
               }}>
                 <header style={{ background: preview.colors.panel }}>
