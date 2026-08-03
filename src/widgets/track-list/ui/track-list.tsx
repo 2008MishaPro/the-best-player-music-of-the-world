@@ -1,6 +1,16 @@
-import { useEffect, useState, type DragEvent, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+} from "react";
 import { wrap } from "@reatom/core";
 import { reatomComponent } from "@reatom/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertTriangle,
   FolderOpen,
@@ -77,13 +87,58 @@ export const TrackList = reatomComponent<TrackListProps>(({
 }) => {
   const playback = playbackSnapshotAtom();
   const selectedTrackIds = selectedTrackIdsAtom();
-  const selectedSet = new Set(selectedTrackIds);
-  const visibleSelectedIds = tracks.filter((track) => selectedSet.has(track.id)).map((track) => track.id);
-  const visibleTrackKey = tracks.map((track) => track.id).join("\u0000");
+  const trackIds = useMemo(() => tracks.map((track) => track.id), [tracks]);
+  const tracksById = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
+  const selectedSet = useMemo(() => new Set(selectedTrackIds), [selectedTrackIds]);
+  const visibleSelectedIds = useMemo(
+    () => trackIds.filter((trackId) => selectedSet.has(trackId)),
+    [selectedSet, trackIds],
+  );
+  const visibleTrackKey = trackIds.join("\u0000");
+  const virtualRowsRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
   const [tracksToAdd, setTracksToAdd] = useState<string[]>([]);
   const [tracksToRemove, setTracksToRemove] = useState<string[]>([]);
   const [removing, setRemoving] = useState(false);
   const [dragOverTrackId, setDragOverTrackId] = useState<string | null>(null);
+
+  const getScrollElement = useCallback(
+    () => virtualRowsRef.current?.closest<HTMLElement>(".app-content") ?? null,
+    [],
+  );
+  const getTrackKey = useCallback(
+    (index: number) => trackIds[index] ?? index,
+    [trackIds],
+  );
+  const rowVirtualizer = useVirtualizer({
+    count: tracks.length,
+    getScrollElement,
+    estimateSize: () => 70,
+    getItemKey: getTrackKey,
+    overscan: 10,
+    scrollMargin,
+    useFlushSync: false,
+  });
+
+  useLayoutEffect(() => {
+    const rowsElement = virtualRowsRef.current;
+    const scrollElement = getScrollElement();
+    if (!rowsElement || !scrollElement) return;
+    const updateScrollMargin = () => {
+      const rowsRect = rowsElement.getBoundingClientRect();
+      const scrollRect = scrollElement.getBoundingClientRect();
+      setScrollMargin(Math.max(0, rowsRect.top - scrollRect.top + scrollElement.scrollTop));
+    };
+    updateScrollMargin();
+    const observer = new ResizeObserver(updateScrollMargin);
+    observer.observe(scrollElement);
+    if (rowsElement.parentElement) observer.observe(rowsElement.parentElement);
+    window.addEventListener("resize", updateScrollMargin);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateScrollMargin);
+    };
+  }, [getScrollElement, visibleTrackKey, visibleSelectedIds.length]);
 
   useEffect(() => {
     const visibleIds = new Set(visibleTrackKey.split("\u0000").filter(Boolean));
@@ -201,12 +256,22 @@ export const TrackList = reatomComponent<TrackListProps>(({
         <div className="track-row track-row--head" role="row">
           <span>#</span><span>Название</span><span>Метки</span><span>Альбом</span><span>Время</span><span />
         </div>
-        {tracks.map((track, index) => {
+        <div
+          ref={virtualRowsRef}
+          className="track-list-virtualizer"
+          style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+        >
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const index = virtualRow.index;
+          const track = tracks[index];
+          if (!track) return null;
           const current = playback.trackId === track.id;
           const playing = current && playback.status === "playing";
           const selected = selectedSet.has(track.id);
           const menuIds = actionIds(track.id);
-          const menuTracks = tracks.filter((item) => menuIds.includes(item.id));
+          const menuTracks = menuIds
+            .map((trackId) => tracksById.get(trackId))
+            .filter((item): item is Track => Boolean(item));
           const allFavorite = menuTracks.every((item) => item.isFavorite);
           const rowClassName = [
             "track-row",
@@ -217,7 +282,17 @@ export const TrackList = reatomComponent<TrackListProps>(({
           ].filter(Boolean).join(" ");
 
           return (
-            <ContextMenu key={track.id}>
+            <div
+              key={virtualRow.key}
+              ref={rowVirtualizer.measureElement}
+              data-index={virtualRow.index}
+              className="track-virtual-row"
+              role="presentation"
+              style={{
+                transform: `translateY(${virtualRow.start - rowVirtualizer.options.scrollMargin}px)`,
+              }}
+            >
+            <ContextMenu>
               <ContextMenuTrigger asChild>
                 <div
                   className={rowClassName}
@@ -300,8 +375,10 @@ export const TrackList = reatomComponent<TrackListProps>(({
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
+            </div>
           );
         })}
+        </div>
       </div>
 
       <AddTrackToPlaylistDialog

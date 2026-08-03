@@ -31,6 +31,7 @@
     "@reatom/core": "^1001.3.0",
     "@reatom/react": "^1001.0.1",
     "@tanstack/react-router": "^1.170.18",
+    "@tanstack/react-virtual": "^3.14.9",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tauri-apps/plugin-opener": "^2",

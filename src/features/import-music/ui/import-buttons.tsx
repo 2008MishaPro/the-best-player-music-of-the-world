@@ -5,6 +5,8 @@ import { FileAudio, FolderPlus, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui";
 import {
+  clearImportErrorAction,
+  clearImportSummaryAction,
   importDirectoryAction,
   importErrorAtom,
   importFilesAction,
@@ -18,7 +20,9 @@ export const ImportButtons = reatomComponent(() => {
   const summary = importSummaryAtom();
 
   useEffect(() => {
-    if (error) toast.error("Импорт не выполнен", { description: error });
+    if (!error) return;
+    toast.error("Импорт не выполнен", { id: "import-feedback", description: error });
+    clearImportErrorAction();
   }, [error]);
 
   useEffect(() => {
@@ -26,11 +30,13 @@ export const ImportButtons = reatomComponent(() => {
     const processed = summary.imported + summary.updated;
     if (processed > 0) {
       toast.success(`Добавлено треков: ${processed}`, {
+        id: "import-feedback",
         description: summary.failed > 0 ? `Не удалось обработать: ${summary.failed}` : undefined,
       });
     } else if (summary.skipped > 0) {
-      toast.info("Трек уже находится в медиатеке");
+      toast.info("Трек уже находится в медиатеке", { id: "import-feedback" });
     }
+    clearImportSummaryAction();
   }, [summary]);
   return (
     <div className="button-group">

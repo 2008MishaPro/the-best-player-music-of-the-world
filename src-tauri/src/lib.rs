@@ -20,6 +20,10 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
+    let mut context = tauri::generate_context!();
+    #[cfg(desktop)]
+    context.set_default_window_icon(Some(tauri::include_image!("./icons/128x128.png")));
+
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -114,6 +118,6 @@ pub fn run() {
             settings_get_all,
             settings_set,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running Tauri application");
 }

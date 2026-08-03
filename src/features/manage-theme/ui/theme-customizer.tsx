@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { reatomComponent } from "@reatom/react";
-import { Check, ImageOff, ImagePlus, Moon, Palette, Plus, Sun, Trash2, WandSparkles } from "lucide-react";
+import { Check, ImageOff, ImagePlus, Moon, Palette, Pencil, Plus, Sun, Trash2, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
   activeThemeAtom,
@@ -12,6 +12,7 @@ import {
   selectThemeAction,
   themeErrorAtom,
   themesAtom,
+  updateCustomThemeAction,
   type AppTheme,
   type ThemeMode,
   type ThemeSeed,
@@ -51,11 +52,13 @@ function ThemeCard({
   theme,
   active,
   onSelect,
+  onEdit,
   onDelete,
 }: {
   theme: AppTheme;
   active: boolean;
   onSelect: () => void;
+  onEdit?: () => void;
   onDelete?: () => void;
 }) {
   return (
@@ -79,6 +82,16 @@ function ThemeCard({
         </span>
         {active && <span className="theme-active-mark"><Check /></span>}
       </button>
+      {onEdit && (
+        <button
+          type="button"
+          className="theme-edit"
+          onClick={onEdit}
+          aria-label={`Редактировать тему ${theme.name}`}
+        >
+          <Pencil />
+        </button>
+      )}
       {onDelete && (
         <button
           type="button"
@@ -124,6 +137,7 @@ export const ThemeCustomizer = reatomComponent(() => {
   const activeTheme = activeThemeAtom();
   const backendError = themeErrorAtom();
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editingTheme, setEditingTheme] = useState<AppTheme | null>(null);
   const [name, setName] = useState("");
   const [seed, setSeed] = useState<ThemeSeed>(activeTheme.seed);
   const [saving, setSaving] = useState(false);
@@ -135,15 +149,27 @@ export const ThemeCustomizer = reatomComponent(() => {
     previewTheme(createTheme("preview", "Новая тема", false, seed));
   }, [editorOpen, seed]);
 
+  const openCreateEditor = () => {
+    setEditingTheme(null);
+    setName("");
+    setSeed({ ...activeTheme.seed });
+    setEditorError(null);
+    setEditorOpen(true);
+  };
+
+  const openEditEditor = (theme: AppTheme) => {
+    setEditingTheme(theme);
+    setName(theme.name);
+    setSeed({ ...theme.seed });
+    setEditorError(null);
+    setEditorOpen(true);
+  };
+
   const changeEditorOpen = (next: boolean) => {
-    setEditorOpen(next);
-    if (next) {
-      setName("");
-      setSeed({ ...activeTheme.seed });
-      setEditorError(null);
-    } else {
-      restoreActiveTheme();
-    }
+    if (next) return;
+    setEditorOpen(false);
+    setEditingTheme(null);
+    restoreActiveTheme();
   };
 
   const selectTheme = async (theme: AppTheme) => {
@@ -162,9 +188,14 @@ export const ThemeCustomizer = reatomComponent(() => {
     setSaving(true);
     setEditorError(null);
     try {
-      const theme = await createCustomThemeAction(name, seed);
+      const theme = editingTheme
+        ? await updateCustomThemeAction(editingTheme.id, name, seed)
+        : await createCustomThemeAction(name, seed);
       setEditorOpen(false);
-      toast.success("Своя тема сохранена", { description: theme.name });
+      setEditingTheme(null);
+      toast.success(editingTheme ? "Тема обновлена" : "Своя тема сохранена", {
+        description: theme.name,
+      });
     } catch (error) {
       setEditorError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -221,7 +252,7 @@ export const ThemeCustomizer = reatomComponent(() => {
           <span><Palette /></span>
           <div><h2>Цвета приложения</h2><p>Выберите готовую палитру или соберите собственную.</p></div>
         </div>
-        <Button onClick={() => changeEditorOpen(true)}><Plus /> Создать тему</Button>
+        <Button onClick={openCreateEditor}><Plus /> Создать тему</Button>
       </header>
 
       <div className="theme-section">
@@ -248,6 +279,7 @@ export const ThemeCustomizer = reatomComponent(() => {
                 theme={theme}
                 active={theme.id === activeTheme.id}
                 onSelect={() => void selectTheme(theme)}
+                onEdit={() => openEditEditor(theme)}
                 onDelete={() => void remove(theme)}
               />
             ))}
@@ -263,7 +295,7 @@ export const ThemeCustomizer = reatomComponent(() => {
             <DialogHeader>
               <span className="dialog-hero-icon"><WandSparkles /></span>
               <div>
-                <DialogTitle>Своя цветовая тема</DialogTitle>
+                <DialogTitle>{editingTheme ? "Редактирование темы" : "Своя цветовая тема"}</DialogTitle>
                 <DialogDescription>
                   Производные оттенки и контраст рассчитываются автоматически.
                 </DialogDescription>
@@ -378,7 +410,7 @@ export const ThemeCustomizer = reatomComponent(() => {
                 Отмена
               </Button>
               <Button type="submit" disabled={saving || !name.trim()}>
-                Сохранить тему
+                {editingTheme ? "Сохранить изменения" : "Сохранить тему"}
               </Button>
             </DialogFooter>
           </form>

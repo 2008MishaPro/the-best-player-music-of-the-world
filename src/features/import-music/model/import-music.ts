@@ -7,6 +7,14 @@ export const importLoadingAtom = atom(false, "importLoadingAtom");
 export const importSummaryAtom = atom<ImportSummary | null>(null, "importSummaryAtom");
 export const importErrorAtom = atom<string | null>(null, "importErrorAtom");
 
+export const clearImportSummaryAction = action(() => {
+  importSummaryAtom.set(null);
+}, "clearImportSummaryAction");
+
+export const clearImportErrorAction = action(() => {
+  importErrorAtom.set(null);
+}, "clearImportErrorAction");
+
 const audioFilters = [{ name: "Аудиофайлы", extensions: ["mp3", "flac", "wav"] }];
 
 async function executeImport(run: () => Promise<ImportSummary>) {

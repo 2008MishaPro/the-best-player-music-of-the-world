@@ -136,6 +136,34 @@ export const createCustomThemeAction = action(async (name: string, seed: ThemeSe
   return theme;
 }, "createCustomThemeAction");
 
+export const updateCustomThemeAction = action(async (
+  themeId: string,
+  name: string,
+  seed: ThemeSeed,
+) => {
+  const cleanName = name.trim();
+  const preferences = themePreferencesAtom();
+  const existingTheme = preferences.customThemes.find((theme) => theme.id === themeId);
+  const nameLength = Array.from(cleanName).length;
+  if (!existingTheme) throw new Error("Пользовательская тема не найдена");
+  if (nameLength < 1 || nameLength > 32) {
+    throw new Error("Название темы должно содержать от 1 до 32 символов");
+  }
+  if (!isThemeSeed(seed)) throw new Error("Один из цветов темы некорректен");
+  if (themesAtom().some((theme) =>
+    theme.id !== themeId
+    && theme.name.toLocaleLowerCase("ru") === cleanName.toLocaleLowerCase("ru"))) {
+    throw new Error("Тема с таким названием уже существует");
+  }
+  const updatedTheme = createTheme(themeId, cleanName, false, seed);
+  await storeAndApply({
+    activeThemeId: preferences.activeThemeId,
+    customThemes: preferences.customThemes.map((theme) =>
+      theme.id === themeId ? updatedTheme : theme),
+  });
+  return updatedTheme;
+}, "updateCustomThemeAction");
+
 export const deleteCustomThemeAction = action(async (themeId: string) => {
   const preferences = themePreferencesAtom();
   const customThemes = preferences.customThemes.filter((theme) => theme.id !== themeId);
